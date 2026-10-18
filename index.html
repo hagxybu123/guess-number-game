@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070b1c">
+<meta name="description" content="猜数字小游戏 · 1~100 之间猜一个数，程序提示偏大偏小，直到猜中。天逸出品。">
+<title>猜数字 · 天逸</title>
+<style>
+  /* ==================================================================
+     猜数字 · 网页版
+     零依赖、纯 CSS 视觉（不用 canvas —— 部分国产内核上 canvas 不可靠）。
+     所有动效只动 transform / opacity，避免重绘导致的闪烁。
+     ================================================================== */
+
+  :root {
+    --bg-0: #070b1c;
+    --bg-1: #0d1430;
+    --bg-2: #141d40;
+    --line: rgba(150, 185, 255, .16);
+    --line-strong: rgba(150, 185, 255, .3);
+    --text: #e8eeff;
+    --text-soft: #a9b6d6;
+    --text-dim: #7d8aad;
+    --gold: #f2d79b;
+    --ice: #c7e2ff;
+    --green: #7ee2a8;
+    --red: #ff9a9a;
+    --radius: 16px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 18px 40px;
+    background: var(--bg-0);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* 星空：用 radial-gradient 铺，纯静态，永不闪烁 */
+  .sky {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-color: var(--bg-0);
+    background-image:
+      radial-gradient(1.4px 1.4px at 12% 18%, rgba(255,255,255,.8) 40%, transparent 100%),
+      radial-gradient(1px 1px at 34% 7%, rgba(205,232,255,.6) 40%, transparent 100%),
+      radial-gradient(1.8px 1.8px at 68% 22%, rgba(255,232,168,.7) 40%, transparent 100%),
+      radial-gradient(1.1px 1.1px at 87% 41%, rgba(255,255,255,.55) 40%, transparent 100%),
+      radial-gradient(1.3px 1.3px at 22% 63%, rgba(205,232,255,.65) 40%, transparent 100%),
+      radial-gradient(1px 1px at 55% 78%, rgba(255,255,255,.5) 40%, transparent 100%),
+      radial-gradient(1.6px 1.6px at 78% 88%, rgba(255,232,168,.55) 40%, transparent 100%),
+      radial-gradient(1.2px 1.2px at 8% 92%, rgba(255,255,255,.45) 40%, transparent 100%),
+      radial-gradient(1px 1px at 44% 34%, rgba(205,232,255,.4) 40%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 92% 12%, rgba(255,255,255,.5) 40%, transparent 100%);
+    background-repeat: repeat;
+    background-size: 520px 520px;
+  }
+
+  /* 深空底色：静态径向渐变，营造中心微亮 */
+  .sky::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 80% at 50% 28%,
+      rgba(38, 62, 130, .5) 0%,
+      rgba(10, 17, 42, .82) 55%,
+      var(--bg-0) 100%);
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  /* ---------------- 标题 ---------------- */
+  header { text-align: center; margin-bottom: 22px; }
+
+  .kicker {
+    margin: 0 0 8px;
+    font-size: .72rem;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: .85;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.7rem, 7vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: .04em;
+    background: linear-gradient(100deg, #fff 10%, var(--ice) 45%, var(--gold) 88%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .sub {
+    margin: 10px 0 0;
+    font-size: .88rem;
+    color: var(--text-soft);
+  }
+
+  /* ---------------- 主面板 ---------------- */
+  .panel {
+    padding: 22px 20px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: linear-gradient(160deg, rgba(22, 33, 70, .92), rgba(12, 19, 44, .92));
+    box-shadow: 0 30px 70px -34px rgba(0, 0, 0, .95);
+  }
+
+  /* 状态条 */
+  .status {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .stat {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(10, 17, 42, .6);
+    text-align: center;
+  }
+
+  .stat b {
+    display: block;
+    font-size: 1.24rem;
+    font-weight: 800;
+    color: var(--ice);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat span {
+    display: block;
+    margin-top: 2px;
+    font-size: .7rem;
+    letter-spacing: .08em;
+    color: var(--text-dim);
+  }
+
+  /* 范围提示 */
+  .range {
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    border-radius: 11px;
+    border: 1px dashed var(--line-strong);
+    background: rgba(10, 17, 42, .5);
+    font-size: .84rem;
+    color: var(--text-soft);
+    text-align: center;
+  }
+
+  .range b { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+  /* 输入区 */
+  .input-row { display: flex; gap: 10px; }
+
+  input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    padding: 14px 16px;
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    background: rgba(7, 11, 28, .85);
+    color: var(--text);
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+    transition: border-color .18s, box-shadow .18s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input[type="text"]::placeholder { color: var(--text-dim); font-weight: 400; letter-spacing: 0; }
+
+  input[type="text"]:focus {
+    border-color: rgba(242, 215, 155, .6);
+    box-shadow: 0 0 0 3px rgba(242, 215, 155, .13);
+  }
+
+  button {
+    border: 0;
+    border-radius: 12px;
+    padding: 14px 22px;
+    font: inherit;
+    font-weight: 800;
+    letter-spacing: .04em;
+    color: #0a1024;
+    background: linear-gradient(120deg, var(--gold), #ffe9b8);
+    cursor: pointer;
+    transition: transform .16s, filter .16s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:hover { filter: brightness(1.06); }
+  button:active { transform: scale(.965); }
+  button:disabled { opacity: .45; cursor: not-allowed; transform: none; filter: none; }
+  button:focus-visible { outline: 2px solid var(--ice); outline-offset: 3px; }
+
+  .btn-ghost {
+    color: var(--text-soft);
+    background: transparent;
+    border: 1px solid var(--line-strong);
+  }
+
+  .btn-ghost:hover { background: rgba(120, 160, 255, .1); filter: none; }
+
+  /* 反馈 */
+  .feedback {
+    margin-top: 16px;
+    min-height: 52px;
+    padding: 13px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(10, 17, 42, .55);
+    font-size: .95rem;
+    text-align: center;
+    transition: border-color .2s, background .2s;
+  }
+
+  .feedback.up { border-color: rgba(255, 154, 154, .48); background: rgba(255, 120, 120, .09); color: var(--red); }
+  .feedback.down { border-color: rgba(160, 200, 255, .48); background: rgba(120, 170, 255, .09); color: var(--ice); }
+  .feedback.win { border-color: rgba(126, 226, 168, .55); background: rgba(80, 220, 150, .1); color: var(--green); }
+  .feedback.warn { border-color: rgba(242, 215, 155, .45); background: rgba(242, 215, 155, .09); color: var(--gold); }
+
+  .feedback strong { font-size: 1.05rem; }
+
+  /* 猜测历史 */
+  .history {
+    margin-top: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(10, 17, 42, .65);
+    font-size: .8rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-soft);
+    /* 新加入的猜测做一个轻微的入场：只动 transform / opacity */
+    animation: chip-in .26s cubic-bezier(.2, .8, .3, 1) both;
+  }
+
+  .chip.hi { border-color: rgba(255, 154, 154, .4); color: var(--red); }
+  .chip.lo { border-color: rgba(160, 200, 255, .4); color: var(--ice); }
+  .chip.ok { border-color: rgba(126, 226, 168, .55); color: var(--green); font-weight: 700; }
+
+  @keyframes chip-in {
+    from { opacity: 0; transform: translateY(6px) scale(.92); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* 胜利时的光晕：静态 box-shadow + 一次性缩放，不逐帧改阴影 */
+  .panel.won {
+    border-color: rgba(126, 226, 168, .5);
+    animation: win-pop .5s cubic-bezier(.2, .8, .3, 1) both;
+  }
+
+  @keyframes win-pop {
+    0%   { transform: scale(1); }
+    55%  { transform: scale(1.012); }
+    100% { transform: scale(1); }
+  }
+
+  /* 底部操作 */
+  .actions {
+    margin-top: 18px;
+    display: flex;
+    gap: 10px;
+  }
+
+  .actions button { flex: 1; padding: 12px 16px; font-size: .9rem; }
+
+  footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: .76rem;
+    color: var(--text-dim);
+  }
+
+  footer a { color: var(--text-soft); text-decoration: none; border-bottom: 1px dotted var(--line-strong); }
+  footer a:hover { color: var(--gold); }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 420px) {
+    .panel { padding: 18px 15px 16px; }
+    input[type="text"] { padding: 13px 14px; font-size: 1.05rem; }
+    button { padding: 13px 17px; }
+    .stat b { font-size: 1.1rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="sky" aria-hidden="true"></div>
+
+<div class="wrap">
+  <header>
+    <p class="kicker">Guess the Number</p>
+    <h1>猜数字</h1>
+    <p class="sub">我心里想了一个 1~100 的整数，你猜，我只告诉你大了还是小了。</p>
+  </header>
+
+  <main class="panel" id="panel">
+    <div class="status">
+      <div class="stat"><b id="tries">0</b><span>已猜次数</span></div>
+      <div class="stat"><b id="best">—</b><span>最佳纪录</span></div>
+    </div>
+
+    <p class="range" id="range">范围：<b>1</b> ~ <b>100</b></p>
+
+    <div class="input-row">
+      <label for="guess" class="sr-only">输入你猜的数字</label>
+      <input id="guess" type="text" inputmode="numeric" autocomplete="off"
+             placeholder="输入 1~100" maxlength="3" enterkeyhint="go" autofocus>
+      <button id="submitBtn" type="button">猜</button>
+    </div>
+
+    <p class="feedback" id="feedback" role="status" aria-live="polite">准备好了就开始吧 ✦</p>
+
+    <div class="history" id="history" aria-label="猜测记录"></div>
+
+    <div class="actions">
+      <button id="restartBtn" class="btn-ghost" type="button">重新开始</button>
+    </div>
+  </main>
+
+  <footer>
+    <a href="https://github.com/hagxybu123/guess-number-game" target="_blank" rel="noopener">查看源码</a>
+    &nbsp;·&nbsp;
+    <a href="https://hagxybu123.github.io/" target="_blank" rel="noopener">天逸 · 星庭</a>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var MIN = 1, MAX = 100;
+  var BEST_KEY = 'tianyi-guess-best';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var panel = $('panel');
+  var input = $('guess');
+  var submitBtn = $('submitBtn');
+  var restartBtn = $('restartBtn');
+  var feedback = $('feedback');
+  var history = $('history');
+  var triesEl = $('tries');
+  var bestEl = $('best');
+  var rangeEl = $('range');
+
+  var answer, tries, lo, hi, over;
+
+  /* ---------- 最佳纪录 ---------- */
+  function readBest() {
+    try {
+      var v = parseInt(localStorage.getItem(BEST_KEY), 10);
+      return (v >= 1 && v <= 20) ? v : null;
+    } catch (e) { return null; }
+  }
+
+  function writeBest(n) {
+    try { localStorage.setItem(BEST_KEY, String(n)); } catch (e) {}
+  }
+
+  function renderBest() {
+    var b = readBest();
+    bestEl.textContent = b === null ? '—' : (b + ' 次');
+  }
+
+  /* ---------- 一局 ---------- */
+  function reset() {
+    answer = MIN + Math.floor(Math.random() * (MAX - MIN + 1));
+    tries = 0;
+    lo = MIN;
+    hi = MAX;
+    over = false;
+
+    triesEl.textContent = '0';
+    history.innerHTML = '';
+    panel.classList.remove('won');
+    feedback.className = 'feedback';
+    feedback.textContent = '准备好了就开始吧 ✦';
+    rangeEl.innerHTML = '范围：<b>' + MIN + '</b> ~ <b>' + MAX + '</b>';
+
+    submitBtn.disabled = false;
+    input.disabled = false;
+    input.value = '';
+    try { input.focus(); } catch (e) {}
+  }
+
+  function setRange() {
+    rangeEl.innerHTML = '范围：<b>' + lo + '</b> ~ <b>' + hi + '</b>' +
+      '　（还剩 <b>' + (hi - lo + 1) + '</b> 个可能）';
+  }
+
+  function say(text, kind) {
+    feedback.className = 'feedback' + (kind ? ' ' + kind : '');
+    feedback.innerHTML = text;
+  }
+
+  function addChip(n, kind) {
+    var el = document.createElement('span');
+    el.className = 'chip' + (kind ? ' ' + kind : '');
+    el.textContent = n + (kind === 'hi' ? ' ↑' : kind === 'lo' ? ' ↓' : ' ✓');
+    history.appendChild(el);
+  }
+
+  /* ---------- 猜一次 ---------- */
+  function submit() {
+    if (over) return;
+
+    var raw = input.value.trim();
+    // 允许全角数字，避免手机输入法直接输不进来
+    raw = raw.replace(/[０-９]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+    });
+
+    if (!raw) { say('先输入一个数字 ✦', 'warn'); return; }
+    if (!/^\d{1,3}$/.test(raw)) { say('只能输入整数哦，别来虚的 ✦', 'warn'); input.select(); return; }
+
+    var n = parseInt(raw, 10);
+    if (n < MIN || n > MAX) { say('超出范围了，只能猜 ' + MIN + '~' + MAX + ' ✦', 'warn'); input.select(); return; }
+    if (n < lo || n > hi) {
+      say('这个数已经被排除掉了（现在只剩 ' + lo + '~' + hi + '）✦', 'warn');
+      input.select();
+      return;
+    }
+
+    tries++;
+    triesEl.textContent = String(tries);
+    input.value = '';
+
+    if (n === answer) {
+      over = true;
+      addChip(n, 'ok');
+      submitBtn.disabled = true;
+      input.disabled = true;
+      panel.classList.add('won');
+
+      var best = readBest();
+      var isNew = best === null || tries < best;
+      if (isNew) writeBest(tries);
+      renderBest();
+
+      var praise = tries === 1 ? '一次就中，你是不是偷看了我的脑子？' :
+                   tries <= 3 ? '有点东西，这都能猜到。' :
+                   tries <= 6 ? '还行吧，稳扎稳打。' :
+                   tries <= 10 ? '费了点劲，但总算是猜到了。' :
+                   '终于猜到了……我差点以为你要猜到明天。';
+
+      say('<strong>猜中了！</strong> 答案是 <strong>' + answer + '</strong>，' +
+        '你用了 <strong>' + tries + '</strong> 次。' +
+        (isNew ? '<br><span style="color:var(--gold)">✦ 新纪录 ✦</span>' : '') +
+        '<br><span style="opacity:.8">' + praise + '</span>', 'win');
+      return;
+    }
+
+    if (n > answer) {
+      addChip(n, 'hi');
+      if (n - 1 < hi) hi = n - 1;
+      setRange();
+      var gap = n - answer;
+      say('<strong>大了</strong>' +
+        (gap <= 3 ? '　—— 非常接近了' : gap <= 10 ? '　—— 有点接近' : ''), 'up');
+    } else {
+      addChip(n, 'lo');
+      if (n + 1 > lo) lo = n + 1;
+      setRange();
+      var gap2 = answer - n;
+      say('<strong>小了</strong>' +
+        (gap2 <= 3 ? '　—— 非常接近了' : gap2 <= 10 ? '　—— 有点接近' : ''), 'down');
+    }
+
+    // 范围收窄到只剩一个数时提示一下
+    if (lo === hi) {
+      say(feedback.innerHTML + '<br><span style="opacity:.8">只剩 ' + lo + ' 了，猜它。</span>',
+        n > answer ? 'up' : 'down');
+    }
+
+    try { input.focus(); } catch (e) {}
+  }
+
+  /* ---------- 事件 ---------- */
+  submitBtn.addEventListener('click', submit);
+  restartBtn.addEventListener('click', reset);
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+  });
+
+  // 输入时只保留数字（含全角转半角）
+  input.addEventListener('input', function () {
+    var v = input.value.replace(/[０-９]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+    }).replace(/\D/g, '').slice(0, 3);
+    if (v !== input.value) input.value = v;
+  });
+
+  renderBest();
+  reset();
+})();
+</script>
+</body>
+</html>
